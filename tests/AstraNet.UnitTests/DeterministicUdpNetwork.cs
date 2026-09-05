@@ -33,6 +33,9 @@ internal sealed class DeterministicUdpNetwork : IAsyncDisposable
     private readonly Direction leftToRight;
     private readonly Direction rightToLeft;
     private Exception? failure;
+    private int droppedDatagrams;
+    private int duplicatedDatagrams;
+    private int reorderedPairs;
 
     public DeterministicUdpNetwork(DeterministicUdpNetworkOptions options, uint initialSequence = 1)
     {
@@ -52,6 +55,13 @@ internal sealed class DeterministicUdpNetwork : IAsyncDisposable
     public ReliableUdpPeer Left { get; }
     public ReliableUdpPeer Right { get; }
     public Exception? Failure => failure;
+    public int DroppedDatagrams => Volatile.Read(ref droppedDatagrams);
+    public int DuplicatedDatagrams => Volatile.Read(ref duplicatedDatagrams);
+    public int ReorderedPairs => Volatile.Read(ref reorderedPairs);
+
+    private void RecordDropped() => Interlocked.Increment(ref droppedDatagrams);
+    private void RecordDuplicated() => Interlocked.Increment(ref duplicatedDatagrams);
+    private void RecordReordered() => Interlocked.Increment(ref reorderedPairs);
 
     private void RecordFailure(Exception error)
     {
@@ -99,11 +109,18 @@ internal sealed class DeterministicUdpNetwork : IAsyncDisposable
         {
             token.ThrowIfCancellationRequested();
             int number = Interlocked.Increment(ref ordinal);
-            if (Pick(number, 11, options.LossPercent)) return ValueTask.CompletedTask;
+            if (Pick(number, 11, options.LossPercent))
+            {
+                owner.RecordDropped();
+                return ValueTask.CompletedTask;
+            }
             var datagram = Create(packet, number, duplicate: false);
             input.Writer.TryWrite(datagram);
             if (Pick(number, 29, options.DuplicatePercent))
+            {
+                owner.RecordDuplicated();
                 input.Writer.TryWrite(Create(packet, number, duplicate: true));
+            }
             return ValueTask.CompletedTask;
         }
 
@@ -117,7 +134,11 @@ internal sealed class DeterministicUdpNetwork : IAsyncDisposable
             int delay = options.BaseLatencyMilliseconds + jitter;
             int pair = (number + 1) / 2;
             bool reversePair = Pick(pair, 71, options.ReorderPercent);
-            if (reversePair && (number & 1) == 1) delay += options.ReorderDelayMilliseconds;
+            if (reversePair && (number & 1) == 1)
+            {
+                owner.RecordReordered();
+                delay += options.ReorderDelayMilliseconds;
+            }
             if (duplicate) delay += options.ReorderDelayMilliseconds;
             long ticks = Stopwatch.GetTimestamp() + (long)delay * Stopwatch.Frequency / 1_000;
             return new ScheduledDatagram(packet.ToArray(), ticks, number, duplicate);

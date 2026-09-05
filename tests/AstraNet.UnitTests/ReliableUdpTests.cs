@@ -39,6 +39,9 @@ public sealed class ReliableUdpTests
             reader.EnsureEnd();
         }
         Assert.Null(link.Failure);
+        Assert.True(link.DroppedDatagrams > 0);
+        Assert.True(link.DuplicatedDatagrams > 0);
+        Assert.True(link.ReorderedPairs > 0);
     }
 
     [Fact]
@@ -91,6 +94,7 @@ public sealed class ReliableUdpTests
             catch (OperationCanceledException) { break; }
         }
         Assert.InRange(received, 1, 99);
+        Assert.True(link.DroppedDatagrams > 0);
         Assert.Null(link.Failure);
     }
 
