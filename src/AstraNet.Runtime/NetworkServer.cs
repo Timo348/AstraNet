@@ -17,15 +17,21 @@ public sealed class NetworkServer : INetworkContext, IAsyncDisposable
     private readonly AsyncLocal<CallbackScope?> _callbackScope = new();
     private readonly object _disposeLock = new();
     private readonly int _maxConnections;
+    private readonly NetworkTransportKind _transportKind;
     private TcpListener? _listener;
+    private ReliableUdpServer? _udpServer;
     private Task? _acceptTask;
     private int _nextConnectionId;
     private int _disposed;
     private Task? _disposeTask;
 
-    public NetworkServer(int maxConnections = 128)
+    public NetworkServer(int maxConnections = 128) : this(NetworkTransportKind.Tcp, maxConnections) { }
+
+    public NetworkServer(NetworkTransportKind transportKind, int maxConnections = 128)
     {
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(maxConnections);
+        if (!Enum.IsDefined(transportKind)) throw new ArgumentOutOfRangeException(nameof(transportKind));
+        _transportKind = transportKind;
         _maxConnections = maxConnections;
     }
 
@@ -38,17 +44,25 @@ public sealed class NetworkServer : INetworkContext, IAsyncDisposable
     public event Action<NetworkConnection>? ClientDisconnected;
     public event Action<NetworkConnection?, Exception>? Error;
 
-    public Task StartAsync(IPAddress address, int port, CancellationToken cancellationToken = default)
+    public async Task StartAsync(IPAddress address, int port, CancellationToken cancellationToken = default)
     {
         ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
         cancellationToken.ThrowIfCancellationRequested();
         ArgumentNullException.ThrowIfNull(address);
-        if (_listener is not null) throw new InvalidOperationException("The server has already been started.");
+        if (_listener is not null || _udpServer is not null) throw new InvalidOperationException("The server has already been started.");
+        if (_transportKind == NetworkTransportKind.ReliableUdp)
+        {
+            _udpServer = new ReliableUdpServer(_maxConnections);
+            _udpServer.Error += error => ReportError(null, error);
+            await _udpServer.StartAsync(address, port, cancellationToken).ConfigureAwait(false);
+            Port = _udpServer.Port;
+            _acceptTask = AcceptUdpLoopAsync();
+            return;
+        }
         _listener = new TcpListener(address, port);
         _listener.Start();
         Port = ((IPEndPoint)_listener.LocalEndpoint).Port;
         _acceptTask = AcceptLoopAsync();
-        return Task.CompletedTask;
     }
 
     public void OnMessage<T>(uint messageId, Action<NetworkConnection, T> handler)
@@ -73,17 +87,28 @@ public sealed class NetworkServer : INetworkContext, IAsyncDisposable
     }
 
     public Task SendAsync<T>(uint connectionId, uint messageId, T message, CancellationToken cancellationToken = default)
+        => SendAsync(connectionId, messageId, message, DeliveryMode.ReliableOrdered, cancellationToken);
+
+    public Task SendAsync<T>(uint connectionId, uint messageId, T message, DeliveryMode mode,
+        CancellationToken cancellationToken = default)
     {
         if (!_connections.TryGetValue(connectionId, out var connection) || !connection.IsConnected)
             throw new KeyNotFoundException($"Connection {connectionId} is not connected.");
-        return SendFrameAsync(connection, Protocol.Message(messageId, message), cancellationToken);
+        return SendFrameAsync(connection, Protocol.Message(messageId, message), mode, cancellationToken);
     }
 
     public Task BroadcastAsync<T>(uint messageId, T message, CancellationToken cancellationToken = default)
-        => BroadcastFrameAsync(Protocol.Message(messageId, message), cancellationToken);
+        => BroadcastAsync(messageId, message, DeliveryMode.ReliableOrdered, cancellationToken);
+
+    public Task BroadcastAsync<T>(uint messageId, T message, DeliveryMode mode,
+        CancellationToken cancellationToken = default)
+        => BroadcastFrameAsync(Protocol.Message(messageId, message), mode, cancellationToken);
 
     /// <summary>Sends a full snapshot for each registered behaviour on the specified object.</summary>
     public async Task ReplicateAsync(uint objectId, CancellationToken cancellationToken = default)
+        => await ReplicateAsync(objectId, DeliveryMode.ReliableOrdered, cancellationToken).ConfigureAwait(false);
+
+    public async Task ReplicateAsync(uint objectId, DeliveryMode mode, CancellationToken cancellationToken = default)
     {
         var behaviours = _behaviours.Where(pair => pair.Key.Item1 == objectId)
             .OrderBy(pair => pair.Key.Item2).Select(pair => pair.Value).ToArray();
@@ -95,7 +120,7 @@ public sealed class NetworkServer : INetworkContext, IAsyncDisposable
             writer.WriteUInt32(behaviour.ObjectId);
             writer.WriteUInt16(behaviour.BehaviourId);
             lock (behaviour) behaviour.__AstraNet_WriteState(writer);
-            await BroadcastFrameAsync(writer.ToArray(), cancellationToken).ConfigureAwait(false);
+            await BroadcastFrameAsync(writer.ToArray(), mode, cancellationToken).ConfigureAwait(false);
         }
     }
 
@@ -103,7 +128,7 @@ public sealed class NetworkServer : INetworkContext, IAsyncDisposable
     {
         if (serverRpc) throw new InvalidOperationException("A server cannot send a ServerRpc to a client.");
         VerifyRegistered(behaviour);
-        BroadcastFrameAsync(Protocol.Rpc(behaviour, rpcId, serverRpc, payload), _lifetime.Token)
+        BroadcastFrameAsync(Protocol.Rpc(behaviour, rpcId, serverRpc, payload), DeliveryMode.ReliableOrdered, _lifetime.Token)
             .ConfigureAwait(false).GetAwaiter().GetResult();
     }
 
@@ -114,22 +139,51 @@ public sealed class NetworkServer : INetworkContext, IAsyncDisposable
             throw new InvalidOperationException("RPC sender is not registered with this server.");
     }
 
-    private async Task BroadcastFrameAsync(byte[] frame, CancellationToken token)
+    private async Task BroadcastFrameAsync(byte[] frame, DeliveryMode mode, CancellationToken token)
     {
         ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
         var tasks = _connections.Values.Where(connection => connection.IsConnected)
-            .Select(connection => SendFrameAsync(connection, frame, token)).ToArray();
+            .Select(connection => SendFrameAsync(connection, frame, mode, token)).ToArray();
         await Task.WhenAll(tasks).ConfigureAwait(false);
     }
 
-    private async Task SendFrameAsync(NetworkConnection connection, byte[] frame, CancellationToken token)
+    private async Task SendFrameAsync(NetworkConnection connection, byte[] frame, DeliveryMode mode, CancellationToken token)
     {
-        try { await connection.Transport.WriteFrameAsync(frame, token).ConfigureAwait(false); }
+        try { await connection.Transport.SendAsync(frame, mode, token).ConfigureAwait(false); }
         catch (Exception error)
         {
             if (error is not OperationCanceledException || !token.IsCancellationRequested) ReportError(connection, error);
             throw;
         }
+    }
+
+    private async Task AcceptUdpLoopAsync()
+    {
+        try
+        {
+            while (!_lifetime.IsCancellationRequested)
+            {
+                var transport = await _udpServer!.AcceptAsync(_lifetime.Token).ConfigureAwait(false);
+                if (transport is null) break;
+                var connection = new NetworkConnection(transport);
+                if (!_connections.TryAdd(connection.Id, connection))
+                {
+                    await transport.DisposeAsync().ConfigureAwait(false);
+                    ReportError(null, new IOException("Connection ID space exhausted."));
+                    continue;
+                }
+                Task task = RunPeerAsync(connection);
+                _peerTasks[connection.Id] = task;
+                _ = task.ContinueWith(completed =>
+                {
+                    _peerTasks.TryRemove(connection.Id, out _);
+                    if (completed.Exception is not null) ReportError(connection, completed.Exception);
+                }, CancellationToken.None, TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
+            }
+        }
+        catch (OperationCanceledException) when (_lifetime.IsCancellationRequested) { }
+        catch (ObjectDisposedException) when (_lifetime.IsCancellationRequested) { }
+        catch (Exception error) { ReportError(null, error); }
     }
 
     private async Task AcceptLoopAsync()
@@ -200,7 +254,8 @@ public sealed class NetworkServer : INetworkContext, IAsyncDisposable
 
     private void Dispatch(NetworkConnection connection, byte[] frame)
     {
-        var reader = new NetworkReader(frame);
+        var reader = connection.Reader;
+        reader.Reset(frame);
         switch ((PacketKind)reader.ReadByte())
         {
             case PacketKind.UserMessage:
@@ -255,6 +310,7 @@ public sealed class NetworkServer : INetworkContext, IAsyncDisposable
     {
         _lifetime.Cancel();
         _listener?.Stop();
+        if (_udpServer is not null) await _udpServer.DisposeAsync().ConfigureAwait(false);
         if (_acceptTask is not null) await _acceptTask.ConfigureAwait(false);
         foreach (var connection in _connections.Values) connection.Disconnect();
         await Task.WhenAll(_peerTasks.Values).ConfigureAwait(false);

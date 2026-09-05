@@ -6,14 +6,16 @@ Validated on 2026-09-05 in Windows with .NET SDK **8.0.423**, targeting **net8.0
 
 | Command | Result |
 | --- | --- |
-| `dotnet restore AstraNet.sln` | All nine projects restored |
+| `dotnet restore AstraNet.sln` | All ten projects restored (including BenchmarkDotNet) |
 | `dotnet build` | Success; 0 warnings, 0 errors |
-| `dotnet test` | 43 unit + 26 integration = **69 passed, 0 failed, 0 skipped** |
+| `dotnet test` | 52 unit + 28 integration = **80 passed, 0 failed, 0 skipped** |
 | `dotnet build -c Release` | Fresh Release outputs woven; 0 warnings, 0 errors |
-| `dotnet test -c Release --no-build --logger trx --results-directory artifacts/test-results/release` | **69 passed, 0 failed, 0 skipped**; TRX counts independently read back |
+| `dotnet run -c Release --project benchmarks/AstraNet.Benchmarks` | 15 BenchmarkDotNet benchmarks completed; .NET SDK 8.0.423, .NET 8.0.29, Windows 11 |
 | `dotnet run --project examples/AstraNet.ExampleServer -- --demo` | Debug demo succeeded |
 | `dotnet run --no-build -c Release --project examples/AstraNet.ExampleServer -- --demo` | Release demo succeeded |
 | `git diff --check` | No whitespace errors |
+
+The final benchmark table is in the README. The exact original baseline was measured before changing Core: writer operations allocated 376 B (integers), 416 B (representative RPC), 384 B (string), and 8,840 B (4 KiB byte array); reader operations allocated 40 B (integers), 96 B (string), 112 B (owned 4 KiB byte array), and 96 B (representative RPC). Reusable primitive writes/reads and borrowed byte-array reads measured 0 B in the final run.
 
 The repeated normal build printed `unchanged (already woven or no networking members)` for already transformed consumers. Unit tests also compare assembly and portable PDB hashes before/after another weave, ensuring no duplicate generation or file changes.
 
@@ -51,6 +53,11 @@ The finite public API demo independently checked that Client A's ServerRpc chang
 | Partial headers/bodies, multiple frames in one write, concurrent writes, EOF | [FramingTests.cs](../tests/AstraNet.UnitTests/FramingTests.cs) |
 | Two clients, authoritative ServerRpc, SyncVars, one ClientRpc per client | [EndToEndTests.cs](../tests/AstraNet.IntegrationTests/EndToEndTests.cs) |
 | Typed messages, targeted sends, broadcast, identities, reconnect | [EndToEndTests.cs](../tests/AstraNet.IntegrationTests/EndToEndTests.cs) |
+| Reliable UDP handshake, disconnect, RPC, SyncVars, reliable/unreliable typed messages | [UdpEndToEndTests.cs](../tests/AstraNet.IntegrationTests/UdpEndToEndTests.cs) |
+| Deterministic 10% loss + duplicates + reordering + latency/jitter, 1,000 reliable messages | [ReliableUdpTests.cs](../tests/AstraNet.UnitTests/ReliableUdpTests.cs), [DeterministicUdpNetwork.cs](../tests/AstraNet.UnitTests/DeterministicUdpNetwork.cs) |
+| Deterministic 30% loss with no Unreliable retransmission | [ReliableUdpTests.cs](../tests/AstraNet.UnitTests/ReliableUdpTests.cs) |
+| ACK bitfields, duplicate ACKs, sequence wraparound, datagram validation | [ReliableUdpTests.cs](../tests/AstraNet.UnitTests/ReliableUdpTests.cs) |
+| UDP idle timeout/reaper cleanup | [UdpEndToEndTests.cs](../tests/AstraNet.IntegrationTests/UdpEndToEndTests.cs) |
 | Unknown/direction-invalid packets; bad known RPC/state/message payloads | [ProtocolSafetyTests.cs](../tests/AstraNet.IntegrationTests/ProtocolSafetyTests.cs) |
 | Hello ordering, simultaneous mutations, callback shutdown, handshake cancellation | [LifecycleTests.cs](../tests/AstraNet.IntegrationTests/LifecycleTests.cs) |
 
@@ -71,8 +78,8 @@ One parallel development build encountered a Windows DLL file lock because two a
 
 ## Scope and remaining limitations
 
-The implemented system comprises Core codecs/contracts, a bounded BCL TCP Transport, Runtime server/client registries and dispatch, a Mono.Cecil Weaver, an automatic MSBuild target, tests, and runnable examples. Protocol and API details are documented in [README.md](../README.md).
+The implemented system comprises Core codecs/contracts, bounded BCL TCP and reliable-UDP transports, Runtime server/client registries and dispatch, a Mono.Cecil Weaver, an automatic MSBuild target, tests, and runnable examples. Protocol and API details are documented in [README.md](../README.md).
 
-The library deliberately uses explicit full SyncVar snapshots and synchronous void RPC sends. It has no authentication/ownership policy, schema negotiation, dynamic spawn system, async/return-value RPCs, behaviour inheritance, generic collection codecs, UDP, or message replay across disconnects. Custom mutable structs must be in the woven consumer assembly. Signed assemblies/nonportable symbols and full IDE integration are outside the current scope. See the README's complete limitations and threading contract before extending these areas.
+The library deliberately uses explicit full SyncVar snapshots and synchronous void RPC sends. It has no authentication/ownership policy, schema negotiation, dynamic spawn system, async/return-value RPCs, behaviour inheritance, generic collection codecs, reliable-unordered/sequenced UDP channels, UDP fragmentation, congestion control, or message replay across disconnects. Custom mutable structs must be in the woven consumer assembly. Signed assemblies/nonportable symbols and full IDE integration are outside the current scope. See the README's complete limitations and threading contract before extending these areas.
 
 This run proves the listed behavior on Windows/.NET 8. It does not claim load-test capacity, cross-platform execution, or release publication.

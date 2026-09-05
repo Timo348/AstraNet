@@ -1,6 +1,6 @@
 # AstraNet
 
-A small .NET 8 multiplayer networking framework with a TCP transport and a real Mono.Cecil build-time IL weaver. Networking behaviours, RPC dispatch, and struct serializers are generated into consumer assemblies. The runtime does not use reflection to serialize messages or invoke RPC methods.
+A small .NET 8 multiplayer networking framework with TCP and an opt-in reliable-UDP transport, plus a real Mono.Cecil build-time IL weaver. Networking behaviours, RPC dispatch, and struct serializers are generated into consumer assemblies. The runtime does not use reflection to serialize messages or invoke RPC methods.
 
 ## Build and run
 
@@ -30,7 +30,7 @@ The server binds to loopback by default and runs until Ctrl+C. The client accept
 AstraNet.sln
 src/
   AstraNet.Core/             Attributes, typed codecs, behaviour contract
-  AstraNet.Transport/        BCL TCP sockets and bounded frame writer
+  AstraNet.Transport/        BCL TCP sockets, UDP sessions, and reliability layer
   AstraNet.Runtime/          Server, client, object registry, protocol dispatch
   AstraNet.Weaver/           Mono.Cecil CLI and reusable AssemblyWeaver API
 build/
@@ -96,6 +96,19 @@ while (true)
 await server.ReplicateAsync(1);
 ```
 
+The runtime keeps gameplay code independent of the wire transport. Use the default constructors for TCP, or select reliable UDP explicitly:
+
+```csharp
+await using var server = new NetworkServer(NetworkTransportKind.ReliableUdp);
+await using var client = new NetworkClient(NetworkTransportKind.ReliableUdp);
+await server.StartAsync(IPAddress.Loopback, 0);
+await client.ConnectAsync("127.0.0.1", server.Port);
+await client.SendAsync(100, message, DeliveryMode.ReliableOrdered);
+await client.SendAsync(101, snapshot, DeliveryMode.Unreliable);
+```
+
+TCP maps both delivery modes to its ordered stream. Reliable UDP uses a 32-message in-flight window because the acknowledgement header carries one cumulative ACK plus 32 history bits. A full reliable window reports `NetworkBackpressureException`; callers can await earlier sends or batch work below that limit.
+
 A completed RPC call means the frame was written, not that the remote body finished. The demo waits for the server's authoritative change before requesting its snapshot. A real application should replicate from its update loop or use its own application-level acknowledgement message.
 
 ## Messages and serialization
@@ -123,6 +136,26 @@ Mark standalone custom structs/enums `[NetworkSerializable]`, or messages `[Netw
 
 `NetworkSerializer<T>.Writer` and `.Reader` are typed delegates. Core registers its fixed primitive codecs at module initialization; the weaver inserts registrations for generated custom codecs before the consumer's existing module initialization code. Nested structs are recursively encoded through these typed calls. No field reflection, `MethodInfo.Invoke`, name-based remote dispatch, or JSON fallback is involved.
 
+### Allocation findings
+
+The original implementation was safe managed code, but every writer path created a writer and copied `ToArray()`, and every reader path created a reader. The benchmark therefore measured avoidable per-operation allocations; pointers were not the missing feature. The new writer can wrap caller-owned storage or rent an `ArrayPool<byte>` buffer, `Reset()` keeps that storage, and the reader can be reset over an existing `ReadOnlyMemory<byte>`. Primitive reads/writes and borrowed byte-array slices use `Span`/`Memory` and `BinaryPrimitives` without unsafe code. `ToArray()`, `ReadString()`, and owning `ReadBytes()` still allocate by contract because they return owned objects.
+
+BenchmarkDotNet `ShortRun` results on Windows 11, .NET SDK 8.0.423 (all values are mean ns/op and allocated bytes/op):
+
+| Operation | Original | Reusable/borrowed path |
+| --- | ---: | ---: |
+| Write integers | 22.380 ns / 376 B | 5.475 ns / 0 B |
+| Write representative RPC | 49.048 ns / 416 B | 26.796 ns / 0 B |
+| Write UTF-8 string | 27.075 ns / 384 B | 12.642 ns / 0 B |
+| Write 4 KiB byte array | 181.978 ns / 8,840 B | 33.759 ns / 0 B |
+| Read integers | 11.580 ns / 40 B | 9.937 ns / 0 B |
+| Read UTF-8 string | 23.371 ns / 96 B | 22.608 ns / 96 B |
+| Read 4 KiB byte array (owned) | 11.217 ns / 112 B | 10.779 ns / 112 B |
+| Read 4 KiB byte array (borrowed) | not available | 2.562 ns / 0 B |
+| Read representative RPC payload | 46.484 ns / 96 B | 29.316 ns / 0 B |
+
+The string result and owning byte-array result remain allocations because the returned `string`/`byte[]` must be materialized. The exact run is reproducible with `dotnet run -c Release --project benchmarks/AstraNet.Benchmarks`.
+
 ## Wire protocol
 
 Each frame has a 4-byte little endian signed length, followed by exactly that many packet bytes. Valid lengths are **1 through 1,048,576**, including the packet envelope but excluding the four length bytes. The reader loops until each header/body is complete, handles coalesced frames independently, and treats EOF between frames as clean disconnect. EOF within a frame is a protocol error. Cancellation during a frame read closes the connection so later reads cannot interpret a partial frame as a new header.
@@ -140,6 +173,30 @@ Every packet starts with a one-byte kind. All numeric envelope fields use little
 `ConnectAsync` waits for a valid Hello with a nonzero unique connection ID. The server exposes a connection to application traffic only after Hello has been written. Unknown packet kinds, disallowed directions, unknown message/object/behaviour/RPC IDs, and malformed payloads close the offending connection. Errors are available through `Error` and `LastError`; a malformed client does not stop the server accepting other connections.
 
 Each connection has one reader and a single writer with at most 64 queued frames plus one active write. Concurrent sends cannot interleave frames. A full outgoing queue throws `NetworkBackpressureException`; active writes have a 10-second deadline, and client connect/Hello also has a 10-second deadline. The server accepts at most 128 concurrent peers by default (`new NetworkServer(maxConnections: ...)` changes this). An idle established connection has no inactivity timeout.
+
+### TCP, reliable UDP, and unreliable UDP
+
+TCP remains the default. It provides a reliable, ordered byte stream, congestion control, and straightforward framing, which fits RPCs and authoritative snapshots when simplicity matters. Its weakness for real-time traffic is head-of-line blocking: one lost segment delays every later frame, including state that may already be stale.
+
+Reliable UDP is opt-in with `NetworkTransportKind.ReliableUdp`. It keeps datagram boundaries and retransmits only the selected `ReliableOrdered` messages, so an application can choose which traffic pays the ordering cost. It does not provide TCP's congestion-control or encryption stack, and this implementation intentionally bounds the in-flight window and datagram size.
+
+`DeliveryMode.Unreliable` uses the same UDP session without retransmission or duplicate suppression. Dropped state updates are expected; newer updates can continue while an older one is missing. TCP maps this mode to its ordered stream for API compatibility, so use UDP when selective loss semantics are required.
+
+### Reliable UDP wire format
+
+Every UDP datagram is at most 1,200 bytes. The fixed 23-byte little-endian header is:
+
+```text
+magic:u16 | version:u8 | flags:u8 | connectionId:u32 |
+sequence:u32 | ack:u32 | ackBits:u32 | channel:u8 |
+payloadLength:u16 | payload (0..1177 bytes)
+```
+
+The handshake is a zero-sequence request/response pair. Established peers exchange data on channel `0` (`Unreliable`) or channel `1` (`ReliableOrdered`); a disconnect datagram removes the server session immediately, while the server reaper also closes sessions that have been idle for 30 seconds. Invalid magic/version/flags, lengths, channels, IDs, handshake fields, and sequence values are rejected.
+
+For reliable packets, `sequence` starts at 1 and skips zero on wraparound. `ack` is the newest received reliable sequence and `ackBits` records the preceding 32 sequence values. A sender keeps at most 32 reliable packets pending, retransmits after 100 ms, and fails delivery after 8 seconds. The receiver tracks a reorder window, buffers newer packets until the missing sequence arrives, advances the delivery cursor, and drops packets older than that cursor or already buffered. ACK-only packets make lost data ACKs recoverable without an application payload.
+
+The unit-test simulator is deterministic (seeded hash decisions) and can independently inject percentage loss, duplicate datagrams, pair reordering, base latency, and jitter. The 1,000-message test combines 10% loss, duplicates, reordering, and latency/jitter; a separate test uses 30% loss for Unreliable traffic.
 
 ## How IL weaving works
 
@@ -195,7 +252,7 @@ Use `dotnet clean` followed by `dotnet build` after changing the weaver implemen
 
 Intentional limitations:
 
-- TCP only; no UDP, retransmission above TCP, reconnect replay, persistent delivery, tick synchronization, compression, encryption, or authentication. A successful write is not an acknowledgement of remote application execution.
+- Reliable UDP currently supports only `Unreliable` and `ReliableOrdered`; there is no reliable-unordered or sequenced channel, fragmentation above 1,177-byte UDP payloads, congestion control, reconnect replay, persistent delivery, tick synchronization, compression, encryption, or authentication. A successful write is not an acknowledgement of remote application execution.
 - No ownership rules: any connected client can invoke any registered ServerRpc. Application authorization and argument range validation are the application's responsibility.
 - No dynamic object spawning/despawning or schema negotiation. Peers must register matching identities and use matching behaviour/field schemas; newly joined clients need the next explicit snapshot. Do not change field order or RPC signatures on just one peer.
 - RPCs must be synchronous, nonstatic, nonvirtual, nongeneric `void` instance methods. Async RPCs, return values, ref/in/out parameters, generic behaviours, and behaviour inheritance beyond direct `NetworkBehaviourBase` are rejected.

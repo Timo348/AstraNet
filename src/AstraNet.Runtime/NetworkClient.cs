@@ -13,7 +13,9 @@ public sealed class NetworkClient : INetworkContext, IAsyncDisposable
     private readonly SemaphoreSlim _lifecycle = new(1, 1);
     private readonly AsyncLocal<CallbackScope?> _callbackScope = new();
     private readonly object _shutdownLock = new();
-    private TcpFrameConnection? _transport;
+    private readonly NetworkTransportKind _transportKind;
+    private INetworkFrameConnection? _transport;
+    private readonly NetworkReader _reader = new(Array.Empty<byte>());
     private Task? _receiveTask;
     private int _disposed;
     private Task? _disconnectTask;
@@ -26,6 +28,14 @@ public sealed class NetworkClient : INetworkContext, IAsyncDisposable
     public Exception? LastError { get; private set; }
     public event Action<Exception>? Error;
     public event Action? Disconnected;
+
+    public NetworkClient() : this(NetworkTransportKind.Tcp) { }
+
+    public NetworkClient(NetworkTransportKind transportKind)
+    {
+        if (!Enum.IsDefined(transportKind)) throw new ArgumentOutOfRangeException(nameof(transportKind));
+        _transportKind = transportKind;
+    }
 
     public void OnMessage<T>(uint messageId, Action<T> handler)
     {
@@ -64,12 +74,20 @@ public sealed class NetworkClient : INetworkContext, IAsyncDisposable
                 _disconnectTask = null;
                 _connecting = deadline;
             }
-            var socket = new TcpClient();
-            TcpFrameConnection? transport = null;
+            TcpClient? socket = null;
+            INetworkFrameConnection? transport = null;
             try
             {
-                await socket.ConnectAsync(host, port, deadline.Token).ConfigureAwait(false);
-                transport = new TcpFrameConnection(socket);
+                if (_transportKind == NetworkTransportKind.ReliableUdp)
+                {
+                    transport = await ReliableUdpConnection.ConnectAsync(host, port, deadline.Token).ConfigureAwait(false);
+                }
+                else
+                {
+                    socket = new TcpClient();
+                    await socket.ConnectAsync(host, port, deadline.Token).ConfigureAwait(false);
+                    transport = new TcpFrameConnection(socket);
+                }
                 byte[]? hello = await transport.ReadFrameAsync(deadline.Token).ConfigureAwait(false);
                 if (hello is null) throw new NetworkProtocolException("Server disconnected before the handshake.");
                 var reader = new NetworkReader(hello);
@@ -85,7 +103,7 @@ public sealed class NetworkClient : INetworkContext, IAsyncDisposable
             catch (Exception error)
             {
                 if (transport is not null) await transport.DisposeAsync().ConfigureAwait(false);
-                else socket.Dispose();
+                else socket?.Dispose();
                 ReportError(error);
                 throw;
             }
@@ -98,7 +116,11 @@ public sealed class NetworkClient : INetworkContext, IAsyncDisposable
     }
 
     public Task SendAsync<T>(uint messageId, T message, CancellationToken cancellationToken = default)
-        => SendFrameAsync(Protocol.Message(messageId, message), cancellationToken);
+        => SendAsync(messageId, message, DeliveryMode.ReliableOrdered, cancellationToken);
+
+    public Task SendAsync<T>(uint messageId, T message, DeliveryMode mode,
+        CancellationToken cancellationToken = default)
+        => SendFrameAsync(Protocol.Message(messageId, message), mode, cancellationToken);
 
     void INetworkContext.SendRpc(NetworkBehaviourBase behaviour, uint rpcId, bool serverRpc, byte[] payload)
     {
@@ -106,15 +128,15 @@ public sealed class NetworkClient : INetworkContext, IAsyncDisposable
         if (!_behaviours.TryGetValue((behaviour.ObjectId, behaviour.BehaviourId), out var registered) ||
             !ReferenceEquals(registered, behaviour))
             throw new InvalidOperationException("RPC sender is not registered with this client.");
-        SendFrameAsync(Protocol.Rpc(behaviour, rpcId, serverRpc, payload), CancellationToken.None)
+        SendFrameAsync(Protocol.Rpc(behaviour, rpcId, serverRpc, payload), DeliveryMode.ReliableOrdered, CancellationToken.None)
             .ConfigureAwait(false).GetAwaiter().GetResult();
     }
 
-    private async Task SendFrameAsync(byte[] frame, CancellationToken token)
+    private async Task SendFrameAsync(byte[] frame, DeliveryMode mode, CancellationToken token)
     {
         var transport = _transport;
         if (transport is null || !IsConnected) throw new InvalidOperationException("Client is not connected.");
-        try { await transport.WriteFrameAsync(frame, token).ConfigureAwait(false); }
+        try { await transport.SendAsync(frame, mode, token).ConfigureAwait(false); }
         catch (Exception error)
         {
             if (error is not OperationCanceledException || !token.IsCancellationRequested) ReportError(error);
@@ -122,7 +144,7 @@ public sealed class NetworkClient : INetworkContext, IAsyncDisposable
         }
     }
 
-    private async Task ReceiveLoopAsync(TcpFrameConnection transport)
+    private async Task ReceiveLoopAsync(INetworkFrameConnection transport)
     {
         try
         {
@@ -146,7 +168,8 @@ public sealed class NetworkClient : INetworkContext, IAsyncDisposable
 
     private void Dispatch(byte[] frame)
     {
-        var reader = new NetworkReader(frame);
+        var reader = _reader;
+        reader.Reset(frame);
         switch ((PacketKind)reader.ReadByte())
         {
             case PacketKind.UserMessage:
