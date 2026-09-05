@@ -86,6 +86,12 @@ internal static class UdpProtocol
             error = "Disconnect UDP datagram has invalid flags.";
             return false;
         }
+        if (flags == 0 && ((channel == 0 && sequence != 0) ||
+            (channel == ReliableOrderedChannel && sequence == 0)))
+        {
+            error = "UDP data sequence does not match its channel.";
+            return false;
+        }
         if ((flags & AckOnlyFlag) == 0 && (flags & HandshakeFlag) == 0 && channel != ReliableOrderedChannel && channel != 0)
         {
             error = "UDP channel is unsupported.";
