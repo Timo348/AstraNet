@@ -96,6 +96,10 @@ public sealed class SerializationTests
     {
         Assert.Null(RoundTrip<string?>(null));
         Assert.Equal("", RoundTrip(""));
+        var serialized = new NetworkWriter();
+        NetworkSerializer<byte[]?>.Write(serialized, null);
+        Assert.Equal(-1, new NetworkReader(serialized.ToArray()).ReadInt32());
+        Assert.Null(new NetworkReader(serialized.ToArray()).ReadBytes());
         Assert.Null(RoundTrip<byte[]?>(null));
         Assert.Empty(RoundTrip(Array.Empty<byte>()));
     }

@@ -33,7 +33,7 @@ internal static class PrimitiveSerializers
         Register<float>((w, v) => w.WriteSingle(v), r => r.ReadSingle());
         Register<double>((w, v) => w.WriteDouble(v), r => r.ReadDouble());
         Register<string?>((w, v) => w.WriteString(v), r => r.ReadString());
-        Register<byte[]?>((w, v) => w.WriteBytes(v), r => r.ReadBytes());
+        Register<byte[]?>(WriteNullableBytes, ReadNullableBytes);
     }
 #pragma warning restore CA2255
     private static void Register<T>(Action<NetworkWriter, T> write, Func<NetworkReader, T> read)
@@ -41,4 +41,7 @@ internal static class PrimitiveSerializers
         NetworkSerializer<T>.Writer = write;
         NetworkSerializer<T>.Reader = read;
     }
+
+    private static void WriteNullableBytes(NetworkWriter writer, byte[]? value) => writer.WriteBytes(value);
+    private static byte[]? ReadNullableBytes(NetworkReader reader) => reader.ReadBytes();
 }
