@@ -122,7 +122,19 @@ internal sealed class ReliableUdpPeer : INetworkFrameConnection
             throw;
         }
         if (completion is null) return;
-        await completion.Task.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            await completion.Task.WaitAsync(cancellationToken).ConfigureAwait(false);
+        }
+        catch
+        {
+            lock (gate)
+            {
+                if (pending.Remove(sequence, out var canceled))
+                    canceled.Completion.TrySetCanceled(cancellationToken);
+            }
+            throw;
+        }
     }
 
     internal async Task ProcessDatagramAsync(ReadOnlyMemory<byte> bytes)
@@ -382,7 +394,7 @@ public sealed class ReliableUdpConnection : INetworkFrameConnection
                 async (packet, token) =>
                 {
                     token.ThrowIfCancellationRequested();
-                    await socket.SendAsync(packet.ToArray(), packet.Length).ConfigureAwait(false);
+                    await socket.SendAsync(packet, token).ConfigureAwait(false);
                 });
             var connection = new ReliableUdpConnection(peer, () =>
             {
