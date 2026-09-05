@@ -1,0 +1,15 @@
+<Project>
+  <PropertyGroup>
+    <AstraNetWeaverProject Condition="'$(AstraNetWeaverProject)' == ''">$(MSBuildThisFileDirectory)../src/AstraNet.Weaver/AstraNet.Weaver.csproj</AstraNetWeaverProject>
+    <AstraNetWeaverDll Condition="'$(AstraNetWeaverDll)' == ''">$(MSBuildThisFileDirectory)../src/AstraNet.Weaver/bin/$(Configuration)/net8.0/AstraNet.Weaver.dll</AstraNetWeaverDll>
+    <AstraNetWeaverReferenceOutputAssembly Condition="'$(AstraNetWeaverReferenceOutputAssembly)' == ''">false</AstraNetWeaverReferenceOutputAssembly>
+  </PropertyGroup>
+  <ItemGroup Condition="'$(AstraNetWeave)' == 'true'">
+    <ProjectReference Include="$(AstraNetWeaverProject)" ReferenceOutputAssembly="$(AstraNetWeaverReferenceOutputAssembly)" PrivateAssets="all" />
+  </ItemGroup>
+  <Target Name="AstraNetWeaveAssembly" AfterTargets="CoreCompile" BeforeTargets="CopyFilesToOutputDirectory"
+          Condition="'$(AstraNetWeave)' == 'true' and '$(DesignTimeBuild)' != 'true' and Exists('@(IntermediateAssembly)')">
+    <WriteLinesToFile File="$(IntermediateOutputPath)astranet.references" Lines="@(ReferencePath->'%(RootDir)%(Directory)')" Overwrite="true" WriteOnlyWhenDifferent="true" />
+    <Exec Command="dotnet &quot;$(AstraNetWeaverDll)&quot; &quot;@(IntermediateAssembly)&quot; &quot;@$(IntermediateOutputPath)astranet.references&quot;" />
+  </Target>
+</Project>

@@ -1,0 +1,11 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup><IsTestProject>true</IsTestProject><IsPackable>false</IsPackable><AstraNetWeave>true</AstraNetWeave><AstraNetWeaverReferenceOutputAssembly>true</AstraNetWeaverReferenceOutputAssembly></PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.11.1" />
+    <PackageReference Include="xunit" Version="2.9.2" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="2.8.2"><PrivateAssets>all</PrivateAssets></PackageReference>
+    <PackageReference Include="Mono.Cecil" Version="0.11.6" />
+    <ProjectReference Include="../../src/AstraNet.Core/AstraNet.Core.csproj" />
+    <ProjectReference Include="../../src/AstraNet.Transport/AstraNet.Transport.csproj" />
+  </ItemGroup>
+</Project>

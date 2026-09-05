@@ -1,0 +1,4 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup><AstraNetWeave>true</AstraNetWeave></PropertyGroup>
+  <ItemGroup><ProjectReference Include="../../src/AstraNet.Runtime/AstraNet.Runtime.csproj" /></ItemGroup>
+</Project>

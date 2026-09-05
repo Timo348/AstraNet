@@ -1,0 +1,87 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.0.31903.59
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "src", "src", "{4A446DCA-BFA7-4DD6-8EF3-BCAC3AE14006}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "AstraNet.Core", "src\AstraNet.Core\AstraNet.Core.csproj", "{40AEA195-D494-4E28-8CE0-C3919E6EA87C}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "AstraNet.Transport", "src\AstraNet.Transport\AstraNet.Transport.csproj", "{723BEA14-252F-4FED-BFFF-922EE6A7BA88}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "AstraNet.Runtime", "src\AstraNet.Runtime\AstraNet.Runtime.csproj", "{A6625960-C2A1-4B83-BEEE-7A777B06AEAD}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "AstraNet.Weaver", "src\AstraNet.Weaver\AstraNet.Weaver.csproj", "{8E91F82D-FFC4-4AD4-9A9F-C91ECC371D4F}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "tests", "tests", "{6426ABBC-9BE1-4A46-93DC-A201DB7342DB}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "AstraNet.UnitTests", "tests\AstraNet.UnitTests\AstraNet.UnitTests.csproj", "{2D165CF1-0158-4D51-9F72-4BAEB29D1E57}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "AstraNet.IntegrationTests", "tests\AstraNet.IntegrationTests\AstraNet.IntegrationTests.csproj", "{07C6F588-A2DA-4F87-BB3C-8FD8287184D4}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "examples", "examples", "{579F29F9-5F78-4197-A6A7-FC4EBAF42C94}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "AstraNet.Example.Shared", "examples\AstraNet.Example.Shared\AstraNet.Example.Shared.csproj", "{227BA54F-CE90-4F37-8DCE-95BD6C0CEE65}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "AstraNet.ExampleServer", "examples\AstraNet.ExampleServer\AstraNet.ExampleServer.csproj", "{AC42F82E-E403-423D-BE50-EAFDD768198E}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "AstraNet.ExampleClient", "examples\AstraNet.ExampleClient\AstraNet.ExampleClient.csproj", "{4D9B1704-ABC4-4836-8836-F583AD5A3B36}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{40AEA195-D494-4E28-8CE0-C3919E6EA87C}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{40AEA195-D494-4E28-8CE0-C3919E6EA87C}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{40AEA195-D494-4E28-8CE0-C3919E6EA87C}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{40AEA195-D494-4E28-8CE0-C3919E6EA87C}.Release|Any CPU.Build.0 = Release|Any CPU
+		{723BEA14-252F-4FED-BFFF-922EE6A7BA88}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{723BEA14-252F-4FED-BFFF-922EE6A7BA88}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{723BEA14-252F-4FED-BFFF-922EE6A7BA88}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{723BEA14-252F-4FED-BFFF-922EE6A7BA88}.Release|Any CPU.Build.0 = Release|Any CPU
+		{A6625960-C2A1-4B83-BEEE-7A777B06AEAD}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{A6625960-C2A1-4B83-BEEE-7A777B06AEAD}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{A6625960-C2A1-4B83-BEEE-7A777B06AEAD}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{A6625960-C2A1-4B83-BEEE-7A777B06AEAD}.Release|Any CPU.Build.0 = Release|Any CPU
+		{8E91F82D-FFC4-4AD4-9A9F-C91ECC371D4F}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{8E91F82D-FFC4-4AD4-9A9F-C91ECC371D4F}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{8E91F82D-FFC4-4AD4-9A9F-C91ECC371D4F}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{8E91F82D-FFC4-4AD4-9A9F-C91ECC371D4F}.Release|Any CPU.Build.0 = Release|Any CPU
+		{2D165CF1-0158-4D51-9F72-4BAEB29D1E57}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{2D165CF1-0158-4D51-9F72-4BAEB29D1E57}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{2D165CF1-0158-4D51-9F72-4BAEB29D1E57}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{2D165CF1-0158-4D51-9F72-4BAEB29D1E57}.Release|Any CPU.Build.0 = Release|Any CPU
+		{07C6F588-A2DA-4F87-BB3C-8FD8287184D4}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{07C6F588-A2DA-4F87-BB3C-8FD8287184D4}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{07C6F588-A2DA-4F87-BB3C-8FD8287184D4}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{07C6F588-A2DA-4F87-BB3C-8FD8287184D4}.Release|Any CPU.Build.0 = Release|Any CPU
+		{227BA54F-CE90-4F37-8DCE-95BD6C0CEE65}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{227BA54F-CE90-4F37-8DCE-95BD6C0CEE65}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{227BA54F-CE90-4F37-8DCE-95BD6C0CEE65}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{227BA54F-CE90-4F37-8DCE-95BD6C0CEE65}.Release|Any CPU.Build.0 = Release|Any CPU
+		{AC42F82E-E403-423D-BE50-EAFDD768198E}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{AC42F82E-E403-423D-BE50-EAFDD768198E}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{AC42F82E-E403-423D-BE50-EAFDD768198E}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{AC42F82E-E403-423D-BE50-EAFDD768198E}.Release|Any CPU.Build.0 = Release|Any CPU
+		{4D9B1704-ABC4-4836-8836-F583AD5A3B36}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{4D9B1704-ABC4-4836-8836-F583AD5A3B36}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{4D9B1704-ABC4-4836-8836-F583AD5A3B36}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{4D9B1704-ABC4-4836-8836-F583AD5A3B36}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(NestedProjects) = preSolution
+		{40AEA195-D494-4E28-8CE0-C3919E6EA87C} = {4A446DCA-BFA7-4DD6-8EF3-BCAC3AE14006}
+		{723BEA14-252F-4FED-BFFF-922EE6A7BA88} = {4A446DCA-BFA7-4DD6-8EF3-BCAC3AE14006}
+		{A6625960-C2A1-4B83-BEEE-7A777B06AEAD} = {4A446DCA-BFA7-4DD6-8EF3-BCAC3AE14006}
+		{8E91F82D-FFC4-4AD4-9A9F-C91ECC371D4F} = {4A446DCA-BFA7-4DD6-8EF3-BCAC3AE14006}
+		{2D165CF1-0158-4D51-9F72-4BAEB29D1E57} = {6426ABBC-9BE1-4A46-93DC-A201DB7342DB}
+		{07C6F588-A2DA-4F87-BB3C-8FD8287184D4} = {6426ABBC-9BE1-4A46-93DC-A201DB7342DB}
+		{227BA54F-CE90-4F37-8DCE-95BD6C0CEE65} = {579F29F9-5F78-4197-A6A7-FC4EBAF42C94}
+		{AC42F82E-E403-423D-BE50-EAFDD768198E} = {579F29F9-5F78-4197-A6A7-FC4EBAF42C94}
+		{4D9B1704-ABC4-4836-8836-F583AD5A3B36} = {579F29F9-5F78-4197-A6A7-FC4EBAF42C94}
+	EndGlobalSection
+EndGlobal

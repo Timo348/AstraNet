@@ -1,0 +1,6 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup>
+    <ProjectReference Include="../AstraNet.Core/AstraNet.Core.csproj" />
+    <ProjectReference Include="../AstraNet.Transport/AstraNet.Transport.csproj" />
+  </ItemGroup>
+</Project>
