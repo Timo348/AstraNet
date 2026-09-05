@@ -10,6 +10,7 @@ Validated on 2026-09-05 in Windows with .NET SDK **8.0.423**, targeting **net8.0
 | `dotnet build` | Success; 0 warnings, 0 errors |
 | `dotnet test` | 52 unit + 28 integration = **80 passed, 0 failed, 0 skipped** |
 | `dotnet build -c Release` | Fresh Release outputs woven; 0 warnings, 0 errors |
+| `dotnet test -c Release --no-build` | **80 passed, 0 failed, 0 skipped** (52 unit + 28 integration) |
 | `dotnet run -c Release --project benchmarks/AstraNet.Benchmarks` | 15 BenchmarkDotNet benchmarks completed; .NET SDK 8.0.423, .NET 8.0.29, Windows 11 |
 | `dotnet run --project examples/AstraNet.ExampleServer -- --demo` | Debug demo succeeded |
 | `dotnet run --no-build -c Release --project examples/AstraNet.ExampleServer -- --demo` | Release demo succeeded |
