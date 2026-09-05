@@ -54,7 +54,7 @@ The finite public API demo independently checked that Client A's ServerRpc chang
 | Partial headers/bodies, multiple frames in one write, concurrent writes, EOF | [FramingTests.cs](../tests/AstraNet.UnitTests/FramingTests.cs) |
 | Two clients, authoritative ServerRpc, SyncVars, one ClientRpc per client | [EndToEndTests.cs](../tests/AstraNet.IntegrationTests/EndToEndTests.cs) |
 | Typed messages, targeted sends, broadcast, identities, reconnect | [EndToEndTests.cs](../tests/AstraNet.IntegrationTests/EndToEndTests.cs) |
-| Reliable UDP handshake, disconnect, RPC, SyncVars, reliable/unreliable typed messages | [UdpEndToEndTests.cs](../tests/AstraNet.IntegrationTests/UdpEndToEndTests.cs) |
+| Reliable UDP handshake, two clients, disconnect, RPC, SyncVars, ClientRpc, reliable/unreliable typed messages | [UdpEndToEndTests.cs](../tests/AstraNet.IntegrationTests/UdpEndToEndTests.cs) |
 | Deterministic 10% loss + duplicates + reordering + latency/jitter, 1,000 reliable messages | [ReliableUdpTests.cs](../tests/AstraNet.UnitTests/ReliableUdpTests.cs), [DeterministicUdpNetwork.cs](../tests/AstraNet.UnitTests/DeterministicUdpNetwork.cs) |
 | Deterministic 30% loss with no Unreliable retransmission | [ReliableUdpTests.cs](../tests/AstraNet.UnitTests/ReliableUdpTests.cs) |
 | ACK bitfields, duplicate ACKs, sequence wraparound, datagram validation | [ReliableUdpTests.cs](../tests/AstraNet.UnitTests/ReliableUdpTests.cs) |
