@@ -6,7 +6,7 @@ using AstraNet.Core;
 namespace AstraNet.Transport;
 
 /// <summary>Length-prefixed TCP frames. A single bounded writer preserves accepted send order.</summary>
-public sealed class TcpFrameConnection : IAsyncDisposable
+public sealed class TcpFrameConnection : INetworkFrameConnection
 {
     public const int DefaultMaxFrameLength = 1024 * 1024;
     private readonly TcpClient _client;
@@ -107,6 +107,14 @@ public sealed class TcpFrameConnection : IAsyncDisposable
                 throw new NetworkBackpressureException("The bounded TCP send queue is full.");
             return pending.Completion.Task;
         }
+    }
+
+    public Task SendAsync(ReadOnlyMemory<byte> payload, DeliveryMode mode, CancellationToken cancellationToken = default)
+    {
+        if (!Enum.IsDefined(mode)) throw new ArgumentOutOfRangeException(nameof(mode));
+        // TCP's stream contract is always reliable and ordered; the mode is
+        // accepted so gameplay code can select transports without branching.
+        return WriteFrameAsync(payload, cancellationToken);
     }
 
     private async Task RunWriterAsync()
