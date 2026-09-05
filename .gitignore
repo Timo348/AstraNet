@@ -6,5 +6,6 @@
 *.user
 *.suo
 artifacts/
+BenchmarkDotNet.Artifacts/
 .env
 *.log
