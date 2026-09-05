@@ -154,7 +154,7 @@ BenchmarkDotNet `ShortRun` results on Windows 11, .NET SDK 8.0.423 (all values a
 | Read 4 KiB byte array (borrowed) | not available | 2.562 ns / 0 B |
 | Read representative RPC payload | 46.484 ns / 96 B | 29.316 ns / 0 B |
 
-The string result and owning byte-array result remain allocations because the returned `string`/`byte[]` must be materialized. The exact run is reproducible with `dotnet run -c Release --project benchmarks/AstraNet.Benchmarks`.
+The string result and owning byte-array result remain allocations because the returned `string`/`byte[]` must be materialized. The original column is the run captured before changing Core; rerunning the project after the change measures the current implementation. The exact final run is reproducible with `dotnet run -c Release --project benchmarks/AstraNet.Benchmarks`.
 
 ## Wire protocol
 
