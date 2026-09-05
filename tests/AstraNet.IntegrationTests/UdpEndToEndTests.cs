@@ -13,38 +13,62 @@ public sealed class UdpEndToEndTests
     public async Task Reliable_udp_runs_rpc_syncvar_and_typed_messages()
     {
         await using var server = new NetworkServer(NetworkTransportKind.ReliableUdp);
-        await using var client = new NetworkClient(NetworkTransportKind.ReliableUdp);
+        await using var clientA = new NetworkClient(NetworkTransportKind.ReliableUdp);
+        await using var clientB = new NetworkClient(NetworkTransportKind.ReliableUdp);
         var serverPlayer = new TestPlayer();
-        var clientPlayer = new TestPlayer();
+        var clientAPlayer = new TestPlayer();
+        var clientBPlayer = new TestPlayer();
         server.RegisterBehaviour(77, 0, serverPlayer);
-        client.RegisterBehaviour(77, 0, clientPlayer);
-        var received = new ConcurrentQueue<ChatMessage>();
+        clientA.RegisterBehaviour(77, 0, clientAPlayer);
+        clientB.RegisterBehaviour(77, 0, clientBPlayer);
+        var receivedA = new ConcurrentQueue<ChatMessage>();
+        var receivedB = new ConcurrentQueue<ChatMessage>();
         var requests = new ConcurrentQueue<ChatMessage>();
         server.OnMessage<ChatMessage>(100, (_, message) => requests.Enqueue(message));
-        client.OnMessage<ChatMessage>(101, received.Enqueue);
+        clientA.OnMessage<ChatMessage>(101, receivedA.Enqueue);
+        clientB.OnMessage<ChatMessage>(101, receivedB.Enqueue);
 
         await server.StartAsync(IPAddress.Loopback, 0);
-        await client.ConnectAsync("127.0.0.1", server.Port);
-        Assert.True(client.IsConnected);
+        await clientA.ConnectAsync("127.0.0.1", server.Port);
+        await clientB.ConnectAsync("127.0.0.1", server.Port);
+        await EventuallyAsync(() => server.ConnectionCount == 2);
+        Assert.True(clientA.IsConnected);
+        Assert.True(clientB.IsConnected);
+        Assert.NotEqual(clientA.ConnectionId, clientB.ConnectionId);
 
-        clientPlayer.Damage(9);
+        clientAPlayer.Damage(9);
         await EventuallyAsync(() => serverPlayer.Health == 91);
-        await client.SendAsync(100, new ChatMessage { Sequence = 9, Text = "message to server" });
+        await clientA.SendAsync(100, new ChatMessage { Sequence = 9, Text = "message to server" });
         await EventuallyAsync(() => requests.Any(message => message.Sequence == 9));
         var inbound = requests.Single(message => message.Sequence == 9);
         Assert.Equal(9, inbound.Sequence);
 
         serverPlayer.Name = "UDP authoritative";
         await server.ReplicateAsync(77);
-        await EventuallyAsync(() => clientPlayer.Health == 91);
-        Assert.Equal("UDP authoritative", clientPlayer.Name);
+        await EventuallyAsync(() => clientAPlayer.Health == 91 && clientBPlayer.Health == 91);
+        Assert.Equal("UDP authoritative", clientAPlayer.Name);
+        Assert.Equal("UDP authoritative", clientBPlayer.Name);
 
-        await server.SendAsync(client.ConnectionId, 101,
+        serverPlayer.PlayDamageEffect(10);
+        await EventuallyAsync(() => clientAPlayer.EffectCalls == 1 && clientBPlayer.EffectCalls == 1);
+        await Task.Delay(100);
+        Assert.Equal(1, clientAPlayer.EffectCalls);
+        Assert.Equal(1, clientBPlayer.EffectCalls);
+        Assert.Equal(10, clientAPlayer.EffectTotal);
+        Assert.Equal(10, clientBPlayer.EffectTotal);
+
+        await server.SendAsync(clientA.ConnectionId, 101,
             new ChatMessage { Sequence = 10, Text = "reliable UDP" });
-        await EventuallyAsync(() => received.Count == 1);
-        Assert.Equal("reliable UDP", Assert.Single(received).Text);
+        await EventuallyAsync(() => receivedA.Count == 1);
+        Assert.Equal("reliable UDP", Assert.Single(receivedA).Text);
+        Assert.Empty(receivedB);
 
-        await client.SendAsync(100, new ChatMessage { Sequence = 11, Text = "unreliable UDP" },
+        await server.BroadcastAsync(101, new ChatMessage { Sequence = 12, Text = "broadcast UDP" });
+        await EventuallyAsync(() => receivedA.Count == 2 && receivedB.Count == 1);
+        Assert.Equal(new[] { 10, 12 }, receivedA.Select(message => message.Sequence));
+        Assert.Equal(12, Assert.Single(receivedB).Sequence);
+
+        await clientA.SendAsync(100, new ChatMessage { Sequence = 11, Text = "unreliable UDP" },
             DeliveryMode.Unreliable);
         await EventuallyAsync(() => requests.Any(message => message.Sequence == 11));
         var unreliable = requests.Single(message => message.Sequence == 11);
@@ -52,9 +76,11 @@ public sealed class UdpEndToEndTests
 
         var disconnected = new TaskCompletionSource<uint>(TaskCreationOptions.RunContinuationsAsynchronously);
         server.ClientDisconnected += connection => disconnected.TrySetResult(connection.Id);
-        var connectionId = client.ConnectionId;
-        await client.DisconnectAsync();
+        var connectionId = clientA.ConnectionId;
+        await clientA.DisconnectAsync();
         Assert.Equal(connectionId, await disconnected.Task.WaitAsync(TimeSpan.FromSeconds(5)));
+        await EventuallyAsync(() => server.ConnectionCount == 1);
+        Assert.True(clientB.IsConnected);
     }
 
     [Fact]
